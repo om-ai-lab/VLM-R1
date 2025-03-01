@@ -46,7 +46,7 @@ from trl.models import create_reference_model, prepare_deepspeed, unwrap_model_f
 from trl.trainer.grpo_config import GRPOConfig
 from trl.trainer.utils import generate_model_card, get_comet_experiment_url
 
-from accelerate.utils import is_peft_model
+from accelerate.utils import is_peft_model, set_seed
 import PIL.Image
 
 import copy
@@ -342,8 +342,7 @@ class Qwen2VLGRPOTrainer(Trainer):
         self.generation_config = GenerationConfig(
             max_new_tokens=self.max_completion_length,
             do_sample=True,  
-            temperature=1, # HACK
-            num_return_sequences=self.num_generations,
+            temperature=1,
             pad_token_id=pad_token_id,
         )
         self.beta = args.beta
@@ -377,6 +376,31 @@ class Qwen2VLGRPOTrainer(Trainer):
             callbacks=callbacks,
             optimizers=optimizers,
         )
+
+        # Check if the per_device_train/eval_batch_size * num processes can be divided by the number of generations
+        num_processes = self.accelerator.num_processes
+        global_batch_size = args.per_device_train_batch_size * num_processes
+        possible_values = [n_gen for n_gen in range(2, global_batch_size + 1) if (global_batch_size) % n_gen == 0]
+        if self.num_generations not in possible_values:
+            raise ValueError(
+                f"The global train batch size ({num_processes} x {args.per_device_train_batch_size}) must be evenly "
+                f"divisible by the number of generations per prompt ({self.num_generations}). Given the current train "
+                f"batch size, the valid values for the number of generations are: {possible_values}."
+            )
+        if self.args.eval_strategy != "no":
+            global_batch_size = args.per_device_eval_batch_size * num_processes
+            possible_values = [n_gen for n_gen in range(2, global_batch_size + 1) if (global_batch_size) % n_gen == 0]
+            if self.num_generations not in possible_values:
+                raise ValueError(
+                    f"The global eval batch size ({num_processes} x {args.per_device_eval_batch_size}) must be evenly "
+                    f"divisible by the number of generations per prompt ({self.num_generations}). Given the current "
+                    f"eval batch size, the valid values for the number of generations are: {possible_values}."
+                )
+
+        # Ensure each process receives a unique seed to prevent duplicate completions when generating with
+        # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
+        # it's safer to set it in all cases.
+        set_seed(args.seed, device_specific=True)
 
         # Gradient accumulation requires scaled loss. Normally, loss scaling in the parent class depends on whether the
         # model accepts loss-related kwargs. Since we compute our own loss, this check is irrelevant. We set
@@ -489,12 +513,15 @@ class Qwen2VLGRPOTrainer(Trainer):
 
         # Generate completions
         with unwrap_model_for_generation(model, self.accelerator) as unwrapped_model:
-            prompt_completion_ids = unwrapped_model.generate(**prompt_inputs, generation_config=self.generation_config)
+            prompt_completion_ids = unwrapped_model.generate(
+                **prompt_inputs, 
+                generation_config=self.generation_config
+            )
 
             prompt_length = prompt_ids.size(1)
             prompt_ids = prompt_completion_ids[:, :prompt_length]
             completion_ids = prompt_completion_ids[:, prompt_length:]
-            prompt_mask = prompt_mask.repeat_interleave(self.num_generations, dim=0)
+            # No need to repeat prompt_mask as we're not duplicating prompts during generation
 
         # Mask everything after the first EOS token
         is_eos = completion_ids == self.processing_class.eos_token_id
@@ -504,9 +531,9 @@ class Qwen2VLGRPOTrainer(Trainer):
         completion_mask = (sequence_indices <= eos_idx.unsqueeze(1)).int()
 
         # Concatenate prompt_mask with completion_mask for logit computation
-        attention_mask = torch.cat([prompt_mask, completion_mask], dim=1)  # (B*G, P+C)
-        pixel_values = prompt_inputs["pixel_values"].repeat(self.num_generations, 1)
-        image_grid_thw = prompt_inputs["image_grid_thw"].repeat_interleave(self.num_generations, dim=0)
+        attention_mask = torch.cat([prompt_mask, completion_mask], dim=1)  # (B, P+C)
+        pixel_values = prompt_inputs["pixel_values"]
+        image_grid_thw = prompt_inputs["image_grid_thw"]
 
         with torch.no_grad():
             # When using num_iterations == 1, old_per_token_logps == per_token_logps, so we can skip its
@@ -538,7 +565,7 @@ class Qwen2VLGRPOTrainer(Trainer):
             completions = [[{"role": "assistant", "content": completion}] for completion in completions]
 
         # Compute the rewards
-        prompts = [prompt for prompt in prompts for _ in range(self.num_generations)]
+        # No need to duplicate prompts as we're not generating multiple completions per prompt
 
         rewards_per_func = torch.zeros(len(prompts), len(self.reward_funcs), device=device)
         for i, (reward_func, reward_processing_class) in enumerate(
@@ -566,17 +593,28 @@ class Qwen2VLGRPOTrainer(Trainer):
                 output_reward_func = reward_func(prompts=prompts, completions=completions, **reward_kwargs)
                 rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
 
+        # Gather rewards across processes
+        rewards_per_func = self.accelerator.gather(rewards_per_func)
+        
         # Sum the rewards from all reward functions
         rewards = rewards_per_func.sum(dim=1)
-
+        
         # Compute grouped-wise rewards
+        # Each group consists of num_generations completions for the same prompt
         mean_grouped_rewards = rewards.view(-1, self.num_generations).mean(dim=1)
         std_grouped_rewards = rewards.view(-1, self.num_generations).std(dim=1)
-
+        
         # Normalize the rewards to compute the advantages
         mean_grouped_rewards = mean_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
         std_grouped_rewards = std_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
         advantages = (rewards - mean_grouped_rewards) / (std_grouped_rewards + 1e-4)
+        
+        # Get only the local slice of advantages
+        process_slice = slice(
+            self.accelerator.process_index * len(prompts),
+            (self.accelerator.process_index + 1) * len(prompts),
+        )
+        advantages = advantages[process_slice]
 
         # Log the metrics
         completion_length = self.accelerator.gather_for_metrics(completion_mask.sum(1)).float().mean().item()
@@ -744,8 +782,8 @@ class Qwen2VLGRPOTrainer(Trainer):
         
         return RepeatRandomSampler(
             data_source=self.train_dataset,
-            mini_repeat_count=1,
-            batch_size=self.num_generations,
+            mini_repeat_count=self.num_generations,
+            batch_size=effective_batch_size // self.num_generations,
             repeat_count=self.num_iterations,
             seed=self.args.seed,
         )
