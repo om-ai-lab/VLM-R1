@@ -214,7 +214,9 @@ def llm_reward(content, sol, **kwargs):
 
 def mcq_reward(content, sol, **kwargs):
     # For multiple choice, extract and compare choices
-    has_choices = extract_choice(sol)
+    sol_match = re.search(r'<answer>(.*?)</answer>', sol)
+    ground_truth = sol_match.group(1).strip() if sol_match else sol.strip()
+    has_choices = extract_choice(ground_truth)
     correct_choice = has_choices.upper() if has_choices else sol.strip()
 
     # Extract answer from content if it has think/answer tags
