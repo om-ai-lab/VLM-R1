@@ -133,7 +133,6 @@ class GRPOScriptArguments(ScriptArguments):
 
 def extract_choice(text):
     # 1. Clean and normalize text
-    text = text.upper()  # Convert to uppercase
     text = re.sub(r'\s+', ' ', text)  # Normalize spaces
 
     # 2. Choice should not have uppercase letters before or after
