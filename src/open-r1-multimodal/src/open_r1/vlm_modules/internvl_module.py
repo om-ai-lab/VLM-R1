@@ -122,7 +122,7 @@ class InvernVLModule(VLMBaseModule):
         
         model_inputs = BatchFeature(data=model_inputs)
 
-        return model_inputs
+        return model_inputs, None
 
     def _load_image(self, image: Image.Image, input_size: int=448, max_num:int=12):
         transform = build_transform(input_size=input_size)
@@ -180,7 +180,7 @@ class InvernVLModule(VLMBaseModule):
         current_time = datetime.now().strftime("%d-%H-%M-%S-%f")
         answer_tag_pattern = r'<answer>(.*?)</answer>'
         bbox_pattern = r'\[(\d+),\s*(\d+),\s*(\d+),\s*(\d+)]'
-        for content, sol in zip(contents, solution):
+        for i, (content, sol) in enumerate(zip(contents, solution)):
             sol = re.findall(answer_tag_pattern, sol, re.DOTALL)[-1]
             sol = json.loads(sol.strip())
             reward = 0.0
@@ -200,8 +200,8 @@ class InvernVLModule(VLMBaseModule):
             if os.getenv("DEBUG_MODE") == "true":
                 log_path = os.getenv("LOG_PATH")
                 current_time = datetime.now().strftime("%d-%H-%M-%S-%f")
-                image_path = kwargs.get("image_path")[0] if "image_path" in kwargs else None
-                problem = kwargs.get("problem")[0]
+                image_path = kwargs.get("image_path")[i] if "image_path" in kwargs else None
+                problem = kwargs.get("problem")[i]
                 if reward <= 1.0:  # this condition can be changed for debug
                     with open(log_path, "a", encoding='utf-8') as f:
                         f.write(f"------------- {current_time} Accuracy reward: {reward} -------------\n")

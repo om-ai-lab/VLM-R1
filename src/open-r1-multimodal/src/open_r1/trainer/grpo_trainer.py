@@ -288,7 +288,6 @@ class VLMGRPOTrainer(Trainer):
         #     if p.requires_grad:
         #         print(n, p.shape)
         print(f"Total trainable parameters: {total_params}")
-
         # Enable gradient checkpointing if requested
         if args.gradient_checkpointing:
             model = self._enable_gradient_checkpointing(model, args)
@@ -299,7 +298,7 @@ class VLMGRPOTrainer(Trainer):
             # If beta is 0.0, the reference model is not needed
             self.ref_model = None
         elif is_deepspeed_zero3_enabled():
-            self.ref_model = model_cls.from_pretrained(model_id, **model_init_kwargs)
+            self.ref_model = AutoModelForCausalLM.from_pretrained(model_id, **model_init_kwargs)
         elif is_peft_model(model):
             # If PEFT is used, the reference model is not needed since the adapter can be disabled
             # to revert to the initial model.
@@ -463,7 +462,8 @@ class VLMGRPOTrainer(Trainer):
             model.base_model.gradient_checkpointing_enable()
         # Enable gradient checkpointing for non-PEFT models
         else:
-            if getattr(model, "language_model", None) is not None:
+            model.gradient_checkpointing_enable()
+            try:
                 # For InternVL; these operations are copied from the original training script of InternVL
                 model.language_model.config.use_cache = False
                 model.vision_model.gradient_checkpointing = True
@@ -471,8 +471,8 @@ class VLMGRPOTrainer(Trainer):
                 model.language_model._set_gradient_checkpointing()
                 # This line is necessary, otherwise the `model.gradient_checkpointing_enable()` will be executed during the training process, leading to an error since InternVL does not support this operation.
                 args.gradient_checkpointing = False
-            else:
-                model.gradient_checkpointing_enable()
+            except:
+                pass
 
         gradient_checkpointing_kwargs = args.gradient_checkpointing_kwargs or {}
         use_reentrant = (
@@ -551,7 +551,7 @@ class VLMGRPOTrainer(Trainer):
                 images.append(img)
                 
 
-        prompt_inputs = self.vlm_module.prepare_model_inputs(
+        prompt_inputs, additional_output = self.vlm_module.prepare_model_inputs(
             self.processing_class,
             prompts_text,
             images,
@@ -562,6 +562,12 @@ class VLMGRPOTrainer(Trainer):
         )
         prompt_inputs = super()._prepare_inputs(prompt_inputs)
         prompt_ids, prompt_mask = prompt_inputs["input_ids"], prompt_inputs["attention_mask"]
+
+        # image_grid_thw may be needed for the reward function
+        if additional_output is not None:
+            assert len(additional_output) == len(inputs)
+            for i, (input_i, additional_output_i) in enumerate(zip(inputs, additional_output)):
+                input_i.update(additional_output_i)
 
 
         # max_prompt_length is not supported yet

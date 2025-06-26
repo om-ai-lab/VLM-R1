@@ -943,7 +943,7 @@ def main(script_args, training_args, model_args):
     
     data_files = script_args.data_file_paths.split(":")
     image_folders = script_args.image_folders.split(":")
-    
+
     if len(data_files) != len(image_folders):
         raise ValueError("Number of data files must match number of image folders")
     

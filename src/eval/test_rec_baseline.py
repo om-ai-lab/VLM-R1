@@ -7,7 +7,7 @@ import re
 import os
 from pprint import pprint
 import random
-
+from PIL import Image
 
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -81,12 +81,22 @@ def iou(box1, box2):
     union = (box1[2]-box1[0])*(box1[3]-box1[1]) + (box2[2]-box2[0])*(box2[3]-box2[1]) - inter
     return float(inter)/union
 
+def resize_bbox(bbox, input_height, input_width, image_height, image_width):
+    bbox[0] = bbox[0] / input_width * image_width
+    bbox[1] = bbox[1] / input_height * image_height
+    bbox[2] = bbox[2] / input_width * image_width
+    bbox[3] = bbox[3] / input_height * image_height
+    return bbox
+
+
 num_samples = 2000
 for ds in TEST_DATASETS:
     if rank == 0:
         print(f"Processing {ds}...")
+
     ds_path = os.path.join(DATA_ROOT, f"{ds}.json")
     data = json.load(open(ds_path, "r"))
+
     random.seed(42)
     random.shuffle(data)
     data = data[:num_samples]
@@ -150,8 +160,16 @@ for ds in TEST_DATASETS:
         batch_output_text = processor.batch_decode(
             generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
         )
-        
-        rank_outputs.extend(batch_output_text)
+
+        batch_output = []
+        for i, output_text in enumerate(batch_output_text):
+            input_height = int(inputs['image_grid_thw'][i][1]*14)
+            input_width = int(inputs['image_grid_thw'][i][2]*14)
+            image = Image.open(batch_messages[i][0]['content'][0]['image'].split("file://")[1])
+            image_width, image_height = image.size
+            batch_output.append((output_text, input_height, input_width, image_height, image_width))
+            
+        rank_outputs.extend(batch_output)
 
     print(f"Rank {rank} has finished processing {len(rank_outputs)} examples")
 
@@ -176,14 +194,15 @@ for ds in TEST_DATASETS:
         correct_number = 0
 
         for input_example, model_output in zip(data, all_outputs):
-            original_output = model_output
+            original_output, input_height, input_width, image_height, image_width = model_output
             ground_truth = input_example['solution']
             model_answer = extract_bbox_answer(original_output)
-            
+            resized_model_answer = resize_bbox(model_answer, input_height, input_width, image_height, image_width)
+
             # Count correct answers
             correct = 0
             if model_answer is not None:
-                if iou(model_answer, ground_truth) > 0.5:
+                if iou(resized_model_answer, ground_truth) > 0.5:
                     correct = 1
             correct_number += correct
             
@@ -193,7 +212,7 @@ for ds in TEST_DATASETS:
                 'question': input_example['problem'],
                 'ground_truth': ground_truth,
                 'model_output': original_output,
-                'extracted_answer': model_answer,
+                'extracted_answer': resized_model_answer,
                 'correct': correct
             }
             final_output.append(result)

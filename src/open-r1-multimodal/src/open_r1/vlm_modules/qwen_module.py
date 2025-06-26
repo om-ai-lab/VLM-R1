@@ -2,8 +2,9 @@ from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2VLForCondition
 from typing import Dict, Any, Union
 from trl.data_utils import maybe_apply_chat_template
 import torch
-
+from copy import deepcopy
 from open_r1.vlm_modules.vlm_module import VLMBaseModule
+from PIL import Image
 
 class Qwen2VLModule(VLMBaseModule):
     def __init__(self):
@@ -46,6 +47,7 @@ class Qwen2VLModule(VLMBaseModule):
     def prepare_model_inputs(self, processing_class, prompts_text, images, return_tensors="pt", padding=True, padding_side="left", add_special_tokens=False):
         # FIXME
         # This could only process pure-multimodal or pure-text inputs
+        additional_output = None
         if len(images) > 0:
             prompt_inputs = processing_class(
                 text=prompts_text,
@@ -54,6 +56,7 @@ class Qwen2VLModule(VLMBaseModule):
                 padding=padding,
                 padding_side=padding_side,
                 add_special_tokens=add_special_tokens)
+            additional_output = [{'image_grid_thw': image_grid_thw} for image_grid_thw in prompt_inputs['image_grid_thw']]
         else:
             prompt_inputs = processing_class(
                 text=prompts_text,
@@ -61,7 +64,7 @@ class Qwen2VLModule(VLMBaseModule):
                 padding=padding,
                 padding_side=padding_side,
                 add_special_tokens=add_special_tokens)
-        return prompt_inputs
+        return prompt_inputs, additional_output
     
     @staticmethod
     def get_question_template(task_type: str):
@@ -119,12 +122,26 @@ class Qwen2VLModule(VLMBaseModule):
                 inter = 0
             union = (box1[2]-box1[0])*(box1[3]-box1[1]) + (box2[2]-box2[0])*(box2[3]-box2[1]) - inter
             return float(inter)/union
+        def resize_bbox(bbox, input_height, input_width, image_height, image_width):
+            bbox[0] = bbox[0] / input_width * image_width
+            bbox[1] = bbox[1] / input_height * image_height
+            bbox[2] = bbox[2] / input_width * image_width
+            bbox[3] = bbox[3] / input_height * image_height
+            return bbox
         contents = [completion[0]["content"] for completion in completions]
         rewards = []
         current_time = datetime.now().strftime("%d-%H-%M-%S-%f")
         answer_tag_pattern = r'<answer>(.*?)</answer>'
         bbox_pattern = r'\[(\d+),\s*(\d+),\s*(\d+),\s*(\d+)]'
-        for content, sol in zip(contents, solution):
+
+        for i, (content, sol) in enumerate(zip(contents, solution)):
+            image_grid_thw = kwargs.get("image_grid_thw")[i]
+            image_path = kwargs.get("image_path")[i][0]
+            image = Image.open(image_path)
+            image_width, image_height = image.size
+            input_height = int(image_grid_thw[1]*14)
+            input_width = int(image_grid_thw[2]*14)
+            
             sol = re.findall(answer_tag_pattern, sol, re.DOTALL)[-1]
             sol = json.loads(sol.strip())
             reward = 0.0
@@ -136,6 +153,7 @@ class Qwen2VLModule(VLMBaseModule):
                     bbox_match = re.search(bbox_pattern, content_answer)
                     if bbox_match:
                         bbox = [int(bbox_match.group(1)), int(bbox_match.group(2)), int(bbox_match.group(3)), int(bbox_match.group(4))]
+                        bbox = resize_bbox(bbox, input_height, input_width, image_height, image_width)
                         # if iou(bbox, sol) > 0.5:
                         #     reward = 1.0
                         reward = iou(bbox, sol)
@@ -146,8 +164,8 @@ class Qwen2VLModule(VLMBaseModule):
             if os.getenv("DEBUG_MODE") == "true":
                 log_path = os.getenv("LOG_PATH")
                 current_time = datetime.now().strftime("%d-%H-%M-%S-%f")
-                image_path = kwargs.get("image_path")[0] if "image_path" in kwargs else None
-                problem = kwargs.get("problem")[0]
+                image_path = kwargs.get("image_path")[i] if "image_path" in kwargs else None
+                problem = kwargs.get("problem")[i]
                 if reward <= 1.0:  # this condition can be changed for debug
                     with open(log_path, "a", encoding='utf-8') as f:
                         f.write(f"------------- {current_time} Accuracy reward: {reward} -------------\n")

@@ -15,7 +15,7 @@
 
 Since the introduction of [Deepseek-R1](https://github.com/deepseek-ai/DeepSeek-R1), numerous works have emerged focusing on reproducing and improving upon it. In this project, we propose VLM-R1, a stable and generalizable R1-style Large Vision-Language Model.
 
-Specifically, for the task of Referring Expression Comprehension (REC), we trained [Qwen2.5-VL](https://github.com/QwenLM/Qwen2.5-VL) using both R1 and SFT approaches. The results reveal that, on the in-domain test data, the performance of the SFT model shows little change compared to that of the R1 model base model when the number of training steps is relatively small (100–600 steps), while the R1 model shows a steady improvement (as shown at the left of the figure below). More importantly, on the out-of-domain test data, the SFT model’s performance deteriorates slightly as the number of steps increases. Nevertheless, the RL model generalizes its reasoning ability to the out-of-domain data (as shown at the right of the figure below).
+Specifically, for the task of Referring Expression Comprehension (REC), we trained [Qwen2.5-VL](https://github.com/QwenLM/Qwen2.5-VL) using both R1 and SFT approaches. The results reveal that, on the in-domain test data, the performance of the SFT model shows little change compared to that of the R1 model base model when the number of training steps is relatively small (100–600 steps), while the R1 model shows a steady improvement (as shown at the left of the figure below). More importantly, on the out-of-domain test data, the SFT model's performance deteriorates slightly as the number of steps increases. Nevertheless, the RL model generalizes its reasoning ability to the out-of-domain data (as shown at the right of the figure below).
 
 ![image](./assets/performance3.png)
 \* *We found previous REC SFT exps used a mismatch pixel config. Therefore, we re-run the study with the correct config on a more complex out-of-domain data. See our [findings](https://om-ai-lab.github.io/2025_03_24.html) for details.*
@@ -34,7 +34,7 @@ This repository supports:
 
 ## 🗞️ Update
 
-- **`2025-04-16`**: Thanks @MoonHoplite for the solution, now zero2 training is supported.
+- **`2025-06-26`**: We introduce a post-resize operation for the bounding box for QwenVL (both [training](src/open-r1-multimodal/src/open_r1/vlm_modules/qwen_module.py#L124-L129) and [evaluation](src/eval/test_rec_r1.py#L92-L97)) and the results are improved slightly.
 - **`2025-04-16`**: We have updated the codebase to improve functionality and maintain unified implementation. Specifically, the REC process is now integrated into [grpo_jsonl.py](src/open-r1-multimodal/src/open_r1/grpo_jsonl.py) for consistency across tasks. Additionally, we introduce a new parameter, `is_reward_customized_from_vlm_module`, which enables the use of customized reward functions defined within the VLM module. When set to `true`, the reward logic is handled in either [QwenVL2Module](src/open-r1-multimodal/src/open_r1/vlm_modules/qwen_module.py) or [InternVLModule](src/open-r1-multimodal/src/open_r1/vlm_modules/internvl_module.py), depending on the selected model. Furthermore, the training log has been enhanced to provide more detailed output for easier monitoring and debugging.
 - **`2025-04-11`**: 🔥🔥🔥 We release the [technical report](https://arxiv.org/abs/2504.07615) of VLM-R1, summarizing our main results and insights.
 - **`2025-04-03`**: We add the `odLength`, `weighted_sum`, and `cosine` reward used in OVD task, please refer our [blog post](https://om-ai-lab.github.io/2025_03_20.html) and [findings](https://om-ai-lab.github.io/2025_03_24.html) to the details of the reward usage and see [grpo_jsonl.py](src/open-r1-multimodal/src/open_r1/grpo_jsonl.py) for code implementation.
@@ -58,6 +58,7 @@ This repository supports:
 - **[`OVD`](https://huggingface.co/omlab/VLM-R1-Qwen2.5VL-3B-OVD-0321)**: Trained with VLM-R1, our Open-Vocabulary Detection (OVD) model achieves the state-of-the-art performance on OVDEval.
 - **[`Math`](https://huggingface.co/omlab/VLM-R1-Qwen2.5VL-3B-Math-0305)**: Through VLM-R1 training, our math model focuses on multimodal reasoning tasks and has achieved Top1 on the OpenCompass Multi-modal Reasoning Leaderboard among models < 4B.
 - **[`REC`](https://huggingface.co/omlab/Qwen2.5VL-3B-VLM-R1-REC-500steps)**: Trained with VLM-R1, our Referring Expression Comprehension (REC) model showcases the superior performance on out-of-domain data and a series of reasoning-grounding tasks.
+- **[`GUI`](https://huggingface.co/konkazzz/GT-r1)**: Trained with VLM-R1, our GUI Defect Detection model outperforms both base and SFT models by achieving the best accuracy and improved generalization across both defective and clean screens.
 
 | Version                          | Base VLM     | Checkpoint                                                                                           | Task Type                 |
 | -------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------- | ------------------------- |

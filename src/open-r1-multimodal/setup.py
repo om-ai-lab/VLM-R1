@@ -24,6 +24,7 @@ from setuptools import find_packages, setup
 
 # Remove stale open_r1.egg-info directory to avoid https://github.com/pypa/pip/issues/5466
 stale_egg_info = Path(__file__).parent / "open_r1.egg-info"
+
 if stale_egg_info.exists():
     print(
         (
@@ -62,7 +63,7 @@ _deps = [
     "sentencepiece>=0.1.99",
     "torch>=2.5.1",
     "transformers==4.49.0",
-    "trl @ git+https://github.com/huggingface/trl.git@main",
+    "trl==0.17.0",
     "vllm==0.6.6.post1",
     "wandb>=0.19.1",
     "pillow",
