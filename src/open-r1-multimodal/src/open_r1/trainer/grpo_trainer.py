@@ -376,7 +376,7 @@ class VLMGRPOTrainer(Trainer):
             temperature=1,
             pad_token_id=pad_token_id,
         )
-        if hasattr(self.vlm_module, "get_eos_token_id"): # For InternVL
+        if hasattr(self.vlm_module, "get_eos_token_id"): # For InternVL and GLM
             self.generation_config.eos_token_id = self.vlm_module.get_eos_token_id(processing_class)
         self.beta = args.beta
         self.epsilon_low = args.epsilon
