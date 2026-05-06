@@ -60,7 +60,9 @@ if is_peft_available():
 if is_wandb_available():
     import wandb
 
+from open_r1.utils.image import resize_image_min_size
 from open_r1.vlm_modules.vlm_module import VLMBaseModule
+
 # What we call a reward function is a callable that takes a list of prompts and completions and returns a list of
 # rewards. When it's a string, it's a model ID, so it's loaded as a pretrained model.
 RewardFunc = Union[str, PreTrainedModel, Callable[[list, list], list[float]]]
@@ -535,21 +537,10 @@ class VLMGRPOTrainer(Trainer):
 
             for img in imgs:
                 try:
-                    # Ensure minimum dimensions of 28 pixels
-                    w, h = img.size
-                    if w < 28 or h < 28:
-                    # Calculate new dimensions maintaining aspect ratio
-                        if w < h:
-                            new_w = 28
-                            new_h = int(h * (28/w))
-                        else:
-                            new_h = 28
-                            new_w = int(w * (28/h))
-                    img = img.resize((new_w, new_h), PIL.Image.Resampling.LANCZOS)
+                    img = resize_image_min_size(img, min_size=28)
                 except:
                     pass
                 images.append(img)
-                
 
         prompt_inputs, additional_output = self.vlm_module.prepare_model_inputs(
             self.processing_class,
