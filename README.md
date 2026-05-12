@@ -241,6 +241,10 @@ We have adapted the VLM-R1 series models to Huawei Ascend Atlas 800T A2 and Atla
 - **Atlas 800T A2**: Please refer to [ascend_inference/910B/vllm_ascend/README.md](ascend_inference/910B/vllm_ascend/README.md)
 - **Atlas 300I Duo**: Please refer to [ascend_inference/300IDuo/README.md](ascend_inference/300IDuo/README.md)
 
+## 🖼️ Examples
+
+- [OVD local inference](examples/ovd/README.md): run the released VLM-R1-OVD checkpoint on a local image and save an annotated result.
+
 ## 🤝 Acknowledgements
 
 We would like to express our sincere gratitude to [DeepSeek](https://github.com/deepseek-ai/DeepSeek-R1), [Open-R1](https://github.com/huggingface/open-r1), [QwenVL](https://github.com/QwenLM/Qwen2.5-VL), [Open-R1-Multimodal](https://github.com/EvolvingLMMs-Lab/open-r1-multimodal), [R1-V](https://github.com/Deep-Agent/R1-V), [RefCOCO](https://github.com/lichengunc/refer), [RefGTA](https://github.com/mikittt/easy-to-understand-REG/tree/master/pyutils/refer2), [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory), [OVDEval](https://github.com/om-ai-lab/OVDEval), [GUI-Testing-Arena](https://huggingface.co/datasets/songjah/GTArena-UI-Defects), and [LISA](https://github.com/dvlab-research/LISA) for providing open-source resources that contributed to the development of this project.
