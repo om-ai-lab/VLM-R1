@@ -5,6 +5,12 @@
 <font size=4><div align='center'>[[📄 Tech Report](https://arxiv.org/abs/2504.07615)] [[📝 Blog](https://om-ai-lab.github.io/index.html)]</div></font>
 
 <div align="center">
+  <a href="https://trendshift.io/repositories/29232?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-29232" target="_blank" rel="noopener noreferrer">
+    <img src="https://trendshift.io/api/badge/trendshift/repositories/29232/daily" alt="om-ai-lab/VLM-R1 | Trendshift" width="250" height="55"/>
+  </a>
+</div>
+
+<div align="center">
 <img src="./assets/performance4.png" width="900"/>
 <div>
   <font size=4>
