@@ -60,6 +60,8 @@ from trl.trainer.grpo_config import GRPOConfig
 from trl.trainer.utils import generate_model_card, get_comet_experiment_url, pad
 from trl import GRPOTrainer
 
+from open_r1.grpo_loss import aggregate_grpo_loss, validate_loss_type
+
 import copy
 
 if is_peft_available():
@@ -291,6 +293,11 @@ class Qwen2VLGRPOVLLMTrainer(Trainer):
             pad_token_id=pad_token_id,
         )
         self.beta = args.beta
+        self.loss_type = validate_loss_type(getattr(args, "loss_type", "grpo"))
+        if self.loss_type == "dr_grpo" and (
+            self.max_completion_length is None or self.max_completion_length <= 0
+        ):
+            raise ValueError("max_completion_length must be positive when loss_type='dr_grpo'")
 
         # The trainer estimates the number of FLOPs (floating-point operations) using the number of elements in the
         # input tensor associated with the key "input_ids". However, in GRPO, the sampled data does not include the
@@ -786,9 +793,13 @@ class Qwen2VLGRPOVLLMTrainer(Trainer):
             per_token_logps - per_token_logps.detach()
         ) * advantages.unsqueeze(1)
         per_token_loss = -(per_token_loss - self.beta * per_token_kl)
-        loss = (
-            (per_token_loss * completion_mask).sum(dim=1) / completion_mask.sum(dim=1)
-        ).mean()
+        # Keep the reduction identical for local and vLLM generation paths.
+        loss = aggregate_grpo_loss(
+            per_token_loss,
+            completion_mask,
+            loss_type=self.loss_type,
+            max_completion_length=self.max_completion_length,
+        )
 
         # Log the metrics
         completion_length = (

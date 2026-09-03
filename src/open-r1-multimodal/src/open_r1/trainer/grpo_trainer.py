@@ -60,7 +60,10 @@ if is_peft_available():
 if is_wandb_available():
     import wandb
 
+from open_r1.grpo_loss import aggregate_grpo_loss, validate_loss_type
 from open_r1.vlm_modules.vlm_module import VLMBaseModule
+
+
 # What we call a reward function is a callable that takes a list of prompts and completions and returns a list of
 # rewards. When it's a string, it's a model ID, so it's loaded as a pretrained model.
 RewardFunc = Union[str, PreTrainedModel, Callable[[list, list], list[float]]]
@@ -381,6 +384,11 @@ class VLMGRPOTrainer(Trainer):
         self.beta = args.beta
         self.epsilon_low = args.epsilon
         self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
+        self.loss_type = validate_loss_type(getattr(args, "loss_type", "grpo"))
+        if self.loss_type == "dr_grpo" and (
+            self.max_completion_length is None or self.max_completion_length <= 0
+        ):
+            raise ValueError("max_completion_length must be positive when loss_type='dr_grpo'")
 
         # Multi-step
         self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
@@ -767,8 +775,14 @@ class VLMGRPOTrainer(Trainer):
             mean_kl = ((per_token_kl * completion_mask).sum(dim=1) / completion_mask.sum(dim=1)).mean()
             self._metrics["kl"].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
 
-        # Compute final loss
-        loss = ((per_token_loss * completion_mask).sum(dim=1) / completion_mask.sum(dim=1)).mean()
+        # Compute final loss. Dr. GRPO uses a fixed denominator to avoid
+        # giving shorter completions a larger update for the same reward.
+        loss = aggregate_grpo_loss(
+            per_token_loss,
+            completion_mask,
+            loss_type=self.loss_type,
+            max_completion_length=self.max_completion_length,
+        )
 
         # Log clip ratio
         is_clipped = (per_token_loss1 < per_token_loss2).float()
