@@ -118,6 +118,10 @@ class GRPOConfig(TrainingArguments):
         epsilon_high (`float` or `None`, *optional*, defaults to `None`):
             Upper-bound epsilon value for clipping. If not specified, it defaults to the same value as the lower-bound
             specified in argument `epsilon`. Paper [DAPO](https://huggingface.co/papers/2503.14476) recommends `0.28`.
+        loss_type (`str`, *optional*, defaults to `"grpo"`):
+            Loss reduction to use. ``"grpo"`` averages each completion's token loss, ``"bnpo"`` normalizes by the
+            active tokens in the batch, and ``"dr_grpo"`` uses a fixed ``max_completion_length`` denominator to
+            remove the response-length bias described in [Dr. GRPO](https://huggingface.co/papers/2503.20783).
         reward_weights (`list[float]` or `None`, *optional*, defaults to `None`):
             Weights for each reward function. Must match the number of reward functions. If `None`, all rewards are
             weighted equally with weight `1.0`.
@@ -308,6 +312,13 @@ class GRPOConfig(TrainingArguments):
         metadata={
             "help": "Upper-bound epsilon value for clipping. If not specified, it defaults to the same value as the "
             "lower-bound specified in argument `epsilon`. Paper DAPO recommends `0.28`."
+        },
+    )
+    loss_type: str = field(
+        default="grpo",
+        metadata={
+            "help": "Loss reduction: `grpo` (per-completion mean), `bnpo` (batch token mean), or `dr_grpo` "
+            "(fixed max-completion-length denominator)."
         },
     )
     reward_weights: Optional[list[float]] = field(

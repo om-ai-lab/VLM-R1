@@ -26,6 +26,16 @@ class GRPOConfig(trl.GRPOConfig):
     args for callbacks, benchmarks etc
     """
 
+    # Keep the multimodal trainer's historical reduction as the default while
+    # exposing the same opt-in alternatives as the shared loss implementation.
+    loss_type: str = field(
+        default="grpo",
+        metadata={
+            "help": "Loss reduction: `grpo` (per-completion mean), `bnpo` (batch token mean), or `dr_grpo` "
+            "(fixed max-completion-length denominator)."
+        },
+    )
+
     benchmarks: list[str] = field(
         default_factory=lambda: [], metadata={"help": "The benchmarks to run after training."}
     )
