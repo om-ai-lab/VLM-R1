@@ -50,6 +50,8 @@ from trl.trainer.utils import generate_model_card, get_comet_experiment_url
 from accelerate.utils import is_peft_model, set_seed
 import PIL.Image
 
+from open_r1.utils.image_utils import ensure_min_image_size
+
 import copy
 from torch.utils.data import Sampler
 import warnings
@@ -534,21 +536,7 @@ class VLMGRPOTrainer(Trainer):
                 imgs = []
 
             for img in imgs:
-                try:
-                    # Ensure minimum dimensions of 28 pixels
-                    w, h = img.size
-                    if w < 28 or h < 28:
-                    # Calculate new dimensions maintaining aspect ratio
-                        if w < h:
-                            new_w = 28
-                            new_h = int(h * (28/w))
-                        else:
-                            new_h = 28
-                            new_w = int(w * (28/h))
-                    img = img.resize((new_w, new_h), PIL.Image.Resampling.LANCZOS)
-                except:
-                    pass
-                images.append(img)
+                images.append(ensure_min_image_size(img))
                 
 
         prompt_inputs, additional_output = self.vlm_module.prepare_model_inputs(
